@@ -10,3 +10,10 @@
 ранних (legacy) версий биткоина.
 
 Проект находится на начальное стадии разработки.
+
+
+## Навигация
+
+* Запросы: https://github.com/hmxustin/pybchain/issues
+* Документация: https://github.com/hmxustin/pybchain/wiki
+* Проект: https://github.com/users/hmxustin/projects/1
