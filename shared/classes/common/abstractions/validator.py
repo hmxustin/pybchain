@@ -7,8 +7,20 @@
 
 from inspect import signature
 from re import search
-from typing import Any, Callable, Dict, List, Optional, TypeAlias
+from typing import (
+    Any, Callable, Dict, List, Optional, Tuple, TypeAlias, TypeVar
+)
 
+
+VObject: TypeAlias = Any
+"""
+Псевдоним для валидируемого объекта (объекта проверок)
+"""
+
+Args: TypeAlias = Tuple
+"""
+Псевдоним для кортежа аргументов
+"""
 
 KWArgs: TypeAlias = Dict[str, Any]
 """
@@ -35,6 +47,11 @@ EHandler: TypeAlias = Optional[Callable[[Exception, Any], None]]
 Псевдоним для метода обработки ошибок
 """
 
+T = TypeVar('T', bound='Validator')
+"""
+Аннотация типа для self в классе ``Validator``
+"""
+
 
 class ValidationError(Exception):
     """
@@ -44,7 +61,6 @@ class ValidationError(Exception):
     """
 
     # Реализация не требуется
-    ...
 
 
 class Validator:
@@ -55,8 +71,38 @@ class Validator:
     (``obj``) список методов проверки (``methods``), поднимая соответствующие
     исключения в случае неудач
     """
+    # region Константы
+    E_NOT_LIST = ('💥 Параметр methods должен быть списком (list) методов '
+                  'проверки (фактический тип полученного methods — {})')
+    """
+    Сообщение об ошибке, если ``methods`` не является списком
+    """
 
-    def __init__(self, methods: VMethods, handler: EHandler = None) -> None:
+    E_EMPTY_LIST = ('💥 Список методов не должен быть пустым: требуется по '
+                    'меньшей мере один метод проверки')
+    """
+    Сообщение об ошибке, если ``methods`` является пустым списком
+    """
+
+    E_NON_CALLABLE = ('💥 Каждый элемент списка methods должен быть методом ('
+                      '"callable". Вместо этого обнаружен объект типа {}')
+    """
+    Сообщение об ошибке, если элемент ``methods`` не является методом
+    """
+
+    E_NON_CALLABLE_H = ('💥 Объект handler должен быть методом (callable) или '
+                        'None (фактический тип полученного handler — {}')
+    """
+    Сообщение об ошибке, если элемент ``handler`` не является методом
+    """
+
+    E_INFO = 'Ошибка [💥={}] c cообщением [✉️="{}"]. Обработчик не установлен'
+    """
+    Общий формат вывода сообщения об ошибке, если внешний обработчик не поступил
+    """
+    # endregion
+
+    def __init__(self: T, methods: VMethods, handler: EHandler = None) -> None:
         """
         **Инициализация экземпляра**
 
@@ -66,30 +112,25 @@ class Validator:
         :return: ``None``
         """
         if not isinstance(methods, list):
-            raise TypeError(f'Параметр methods должен быть списком '
-                            f'методов проверки (в действительности '
-                            f'тип methods — {type(methods)}')
+            tpe = type(methods)
+            raise TypeError(self.E_NOT_LIST.format(tpe))
 
         if not methods:
-            raise TypeError('Список методов не должен быть пустым: '
-                            'пропадает смысл проверок')
+            raise TypeError(self.E_EMPTY_LIST)
 
         for method in methods:
             if not callable(method):
-                raise TypeError(f'Каждый элемент списка methods '
-                                f'должен быть методом (callable). '
-                                f'Фактически обнаружен тип '
-                                f'{type(method)}')
+                tpe = type(method)
+                raise TypeError(self.E_NON_CALLABLE.format(tpe))
 
             sign = signature(method)
             if 'return' in sign.parameters:
                 r_type = sign.parameters['return'].annotation
                 if not (r_type == bool or r_type == Optional[bool]):
-                    raise TypeError(f'Конкретный метод проверки '
-                                    f'должен возвращать значение '
-                                    f'булева типа. По факту тип'
-                                    f'возвращаемого значения - '
-                                    f'{r_type}')
+                    msg = (f'Конкретный метод проверки должен возвращать '
+                           f'значение булева типа. По факту тип возвращаемого '
+                           f'значения — {r_type}')
+                    raise TypeError(msg)
             else:
                 raise TypeError('Конкретный метод проверки должен '
                                 'возвращать значения булева типа. '
@@ -97,15 +138,13 @@ class Validator:
                                 'возвращает вообще')
 
         if handler is not None and not callable(handler):
-            raise TypeError(f'Метод обработки ошибок (handler) '
-                            f'должен быть методом (callable) или '
-                            f'None (в действительности тип handler '
-                            f'— {type(handler)}')
+            tpe = type(handler)
+            raise TypeError(self.E_NON_CALLABLE_H.format(tpe))
 
         self._methods = methods
         self._handler = handler
 
-    def validate(self, obj: Any, **params: VParams) -> None:
+    def validate(self: T, obj: VObject, **params: VParams) -> None:
         """
         **Метод валидации**
 
@@ -137,13 +176,13 @@ class Validator:
                 method(obj, params)
             except ValidationError as er:
                 if self._handler is None:
-                    print(f'Ошибка [💥={_en(type(er))}] '
-                          f'c cообщением [✉️="{er.args[0]}"]. '
-                          f'Обработчик не установлен 🚫')
+                    en = _en(type(er))
+                    msg = er.args[0]
+                    print(self.E_INFO.format(en, msg))
                 else:
                     self._handler(er, obj)
 
-    def validate_with(self, **params: VParams) -> Callable:
+    def validate_with(self: T, **params: VParams) -> Callable:
         """
         ** Декоратор **
 
@@ -152,8 +191,9 @@ class Validator:
         :param params: аргументы, необходимые для валидации
         :return: конкретная функция валидации
         """
-        def decorator(func):
-            def wrapper(obj, *args, **kwargs):
+        def decorator(func: Callable) -> Callable:
+            def wrapper(obj: VObject, *args: Args,
+                        **kwargs: VParams) -> Callable:
                 self.validate(obj, **params)
                 return func(obj, *args, **kwargs)
             return wrapper
