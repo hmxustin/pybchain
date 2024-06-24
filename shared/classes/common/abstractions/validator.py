@@ -100,6 +100,12 @@ class Validator:
     """
     Общий формат вывода сообщения об ошибке, если внешний обработчик не поступил
     """
+
+    E_RET_NOT_BOOL = ('Полученный метод должен, но не возвращает булево '
+                      'значение даже в качестве опционального')
+    """
+    Ошибка в формате возвращаемого методом проверки значения (должен быть булев)
+    """
     # endregion
 
     def __init__(self: T, methods: VMethods, handler: EHandler = None) -> None:
@@ -124,18 +130,9 @@ class Validator:
                 raise TypeError(self.E_NON_CALLABLE.format(tpe))
 
             sign = signature(method)
-            if 'return' in sign.parameters:
-                r_type = sign.parameters['return'].annotation
-                if not (r_type == bool or r_type == Optional[bool]):
-                    msg = (f'Конкретный метод проверки должен возвращать '
-                           f'значение булева типа. По факту тип возвращаемого '
-                           f'значения — {r_type}')
-                    raise TypeError(msg)
-            else:
-                raise TypeError('Конкретный метод проверки должен '
-                                'возвращать значения булева типа. '
-                                'По факту метод ничего не '
-                                'возвращает вообще')
+            ra = sign.return_annotation
+            if not (ra == bool or ra == Optional[bool]):
+                raise TypeError(self.E_RET_NOT_BOOL)
 
         if handler is not None and not callable(handler):
             tpe = type(handler)
