@@ -5,62 +5,21 @@
 использован через декоратор с параметрами)
 """
 
-from inspect import signature
+from inspect import signature, Signature
 from re import search
-from typing import (
-    Any, Callable, Dict, List, Optional, Tuple, TypeAlias, TypeVar
-)
+from typing import TypeVar
 
+from ._errors import *
+from ._typing import *
+from ._validation_error import *
 
-VObject: TypeAlias = Any
-"""
-Псевдоним для валидируемого объекта (объекта проверок)
-"""
-
-Args: TypeAlias = Tuple
-"""
-Псевдоним для кортежа аргументов
-"""
-
-KWArgs: TypeAlias = Dict[str, Any]
-"""
-Псевдоним именованных аргументов
-"""
-
-VParams: TypeAlias = Optional[KWArgs]
-"""
-Псевдоним необязательного параметра в виде именованных аргументов
-"""
-
-VMethod: TypeAlias = Callable[[Any, VParams], bool]
-"""
-Псевдоним для метода валидации
-"""
-
-VMethods: TypeAlias = List[VMethod]
-"""
-Псевдоним для метода валидации
-"""
-
-EHandler: TypeAlias = Optional[Callable[[Exception, Any], None]]
-"""
-Псевдоним для метода обработки ошибок
-"""
 
 T = TypeVar('T', bound='Validator')
 """
+**Типизация self**
+
 Аннотация типа для self в классе ``Validator``
 """
-
-
-class ValidationError(Exception):
-    """
-    **Базовый класс "Ошибка валидации"**
-
-    Базовый класс для исключений валидации
-    """
-
-    # Реализация не требуется
 
 
 class Validator:
@@ -71,42 +30,6 @@ class Validator:
     (``obj``) список методов проверки (``methods``), поднимая соответствующие
     исключения в случае неудач
     """
-    # region Константы
-    E_NOT_LIST = ('💥 Параметр methods должен быть списком (list) методов '
-                  'проверки (фактический тип полученного methods — {})')
-    """
-    Сообщение об ошибке, если ``methods`` не является списком
-    """
-
-    E_EMPTY_LIST = ('💥 Список методов не должен быть пустым: требуется по '
-                    'меньшей мере один метод проверки')
-    """
-    Сообщение об ошибке, если ``methods`` является пустым списком
-    """
-
-    E_NON_CALLABLE = ('💥 Каждый элемент списка methods должен быть методом ('
-                      '"callable". Вместо этого обнаружен объект типа {}')
-    """
-    Сообщение об ошибке, если элемент ``methods`` не является методом
-    """
-
-    E_NON_CALLABLE_H = ('💥 Объект handler должен быть методом (callable) или '
-                        'None (фактический тип полученного handler — {}')
-    """
-    Сообщение об ошибке, если элемент ``handler`` не является методом
-    """
-
-    E_INFO = 'Ошибка [💥={}] c cообщением [✉️="{}"]. Обработчик не установлен'
-    """
-    Общий формат вывода сообщения об ошибке, если внешний обработчик не поступил
-    """
-
-    E_RET_NOT_BOOL = ('Полученный метод должен, но не возвращает булево '
-                      'значение даже в качестве опционального')
-    """
-    Ошибка в формате возвращаемого методом проверки значения (должен быть булев)
-    """
-    # endregion
 
     def __init__(self: T, methods: VMethods, handler: EHandler = None) -> None:
         """
@@ -117,31 +40,52 @@ class Validator:
         :param handler: обработчик ошибок
         :return: ``None``
         """
+        self._methods = []
+
         if not isinstance(methods, list):
             tpe = type(methods)
-            raise TypeError(self.E_NOT_LIST.format(tpe))
+            raise TypeError(NOT_LIST.format(tpe))
 
         if not methods:
-            raise TypeError(self.E_EMPTY_LIST)
+            raise TypeError(EMPTY_LIST)
 
         for method in methods:
-            if not callable(method):
-                tpe = type(method)
-                raise TypeError(self.E_NON_CALLABLE.format(tpe))
-
-            sign = signature(method)
-            ra = sign.return_annotation
-            if not (ra == bool or ra == Optional[bool]):
-                raise TypeError(self.E_RET_NOT_BOOL)
+            self._set_method(method)
 
         if handler is not None and not callable(handler):
             tpe = type(handler)
             raise TypeError(self.E_NON_CALLABLE_H.format(tpe))
 
-        self._methods = methods
+        if handler:
+            sign = signature(handler)
+            params = list(sign.parameters.values())
+
+            if len(params) < 2:
+                raise TypeError(self.E_NOT_ENOUGH_PARAMS)
+
+            # Проверяем первый аргумент (исключая self, если это метод класса)
+            first_param = params[0] if params[0].name != 'self' else params[1]
+            if first_param.annotation != Exception:
+                return
+
+            # Проверяем второй аргумент
+            second_param = params[1] if params[0].name != 'self' else params[2]
+            if second_param.annotation != Any:
+                return False
+
         self._handler = handler
 
-    def validate(self: T, obj: VObject, **params: VParams) -> None:
+    def _set_method(self: T, method: VMethod):
+        if not callable(method):
+            tpe = type(method)
+            raise TypeError(NON_CALLABLE_M.format(tpe))
+
+        sign = signature(method)
+        ra = sign.return_annotation
+        if ra is not Signature.empty:
+            raise TypeError(self.E_RET_NOT_NONE)
+
+    def validate(self: T, obj: VObj, **params: VParams) -> None:
         """
         **Метод валидации**
 
@@ -189,7 +133,7 @@ class Validator:
         :return: конкретная функция валидации
         """
         def decorator(func: Callable) -> Callable:
-            def wrapper(obj: VObject, *args: Args,
+            def wrapper(obj: VObj, *args: Args,
                         **kwargs: VParams) -> Callable:
                 self.validate(obj, **params)
                 return func(obj, *args, **kwargs)
