@@ -92,6 +92,7 @@ class Validator:
         for method in self._methods:
             try:
                 method(obj, params)
+
             except ValidationError as er:
                 if self._handler is None:
                     en = _en(type(er))
@@ -136,8 +137,19 @@ class Validator:
 
         sign = signature(method)
         ra = sign.return_annotation
-        if ra is not Signature.empty:
-            raise TypeError(self.E_RET_NOT_NONE)
+
+        if ra is not Signature.empty and ra is not None:
+            raise TypeError(RET_NOT_NONE)
+
+        params = list(sign.parameters.values())
+
+        if len(params) < 1:
+            raise TypeError(NOT_ENOUGH_PARAMS)
+
+        first_param = params[0] if params[0].name != 'self' else params[1]
+
+        if first_param.annotation != Any:
+            raise TypeError(PARAM_IS_NOT_ANY)
 
         method_source = getsource(method)
         sem_tree = parse(method_source)
@@ -169,15 +181,22 @@ class Validator:
         sign = signature(handler)
         params = list(sign.parameters.values())
 
+        ra = sign.return_annotation
+
+        if ra is not Signature.empty and ra is not None:
+            raise TypeError(RET_NOT_NONE)
+
         if len(params) < 2:
             raise TypeError(NOT_ENOUGH_PARAMS)
 
         first_param = params[0] if params[0].name != 'self' else params[1]
+
         if first_param.annotation != Exception:
             raise TypeError(PARAM_IS_NOT_EXCEPTION)
 
         second_param = params[1] if params[0].name != 'self' else params[2]
+
         if second_param.annotation != Any:
-            raise TypeError()
+            raise TypeError(PARAM_IS_NOT_ANY)
 
         self._handler = handler
