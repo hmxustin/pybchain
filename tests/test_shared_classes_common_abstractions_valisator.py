@@ -1,172 +1,234 @@
+"""
+**Тесты для Валидатора**
+
+Тестирование Валидатора в различных условиях
+"""
+
 from pytest import raises as _
 
-from shared.classes.common.abstractions.validator import *
-from inspect import signature
-from typing import Optional
+from shared.classes.basic.abstractions.validator.validator import *
 
 
-def method_is_positive(obj, params) -> bool:
-    return obj > 0
+def method_has_raise(a: Any) -> None:                                 # noqa
+    if False:
+        raise Exception  # noqa
 
 
-def method_always_true(obj) -> bool:
-    return True
+def method_has_raise_1(a: Any) -> None:                               # noqa
+    if False:
+        raise Exception  # noqa
 
 
-def method_without_return(obj):
+def correct_handler(e: Exception, obj: Any) -> None:                  # noqa
     ...
 
 
-def testp_validator_initialization():
+def method_returns_something() -> str:                                # noqa
+    return '42'
+
+
+def method_without_params() -> None:                                  # noqa
+    ...
+
+
+def method_with_invalid_param(obj: int) -> None:                      # noqa
+    ...
+
+
+def method_without_raise(obj: Any) -> None:                           # noqa
+    ...
+
+
+def handler_with_only_one_param(a: Any) -> None:                      # noqa
+    ...
+
+
+def handler_with_invalid_param1(a: Any, b: Any) -> None:              # noqa
+    ...
+
+
+def handler_with_invalid_param2(e: Exception, b: int) -> None:        # noqa
+    ...
+
+
+def real_Length_validation(obj: Any, params: VParams) -> None:        # noqa
+    max_length = params.get('max_length')
+
+    if max_length is None:
+        raise TypeError('Необходимо указать max_length в kwargs')
+
+    ln = len(obj)
+    if ln > max_length:
+        msg = (f'Фактическая длина объекта {repr(obj)} составляет {ln}, '
+               f'что выходит за пределы максимально допустимого значения '
+               f'({max_length})')
+        raise ValueError(msg)
+
+
+def testp_validator_initialization() -> None:
+    """
+    **Инициализация (корректная)**
+
+    Корректная инициализация валидатора требует передачи ему списка методов
+    валидации (причем, методы должны возвращать значение булева типа, а сам
+    список не должен быть пустым). Метод обработки ошибок передавать можно,
+    но не обязательно. Если он передается, то он должен получать исключение и
+    сам объект.
+
+    Корректная инициализация возможна при следующих обстоятельствах:
+
+    1. Корректная инициализация с валидными методами (с одним, с несколькими)
+       без обработчика.
+    2. Корректная инициализация с валидным обработчиком.
+
+    Задача: Проверить, что класс инициализируется корректно
+    при передаче списка методов валидации и обработчика ошибок.
+    """
+    methods = [method_has_raise]
+    validator = Validator(methods)                                    # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    validator = Validator(methods)                                    # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = correct_handler
+    validator = Validator(methods, handler)                           # noqa
+
+
+def testn_validator_initialization() -> None:
+    """
+    ** Инициализация (некорректная)**
+
+    Некорректная реализация возможна при следующих обстоятельствах:
+
+    1. Исключение при передаче неверного типа methods (не список).
+    2. Исключение при передаче пустого списка методов (список, но пустой).
+    3. Исключение при передаче не вызываемого объекта в качестве метода.
+    4. Исключение при передаче невалидного обработчика (не вызываемый).
+    5. Исключение при методе, возвращающем какое-либо значение.
+    6. Исключение при методе с неправильными параметрами (некорректное число
+       или их типы.
+    7. Исключение при хэндлере не являющемся вызываемым.
+    8. Исключение при хэндлере с неправильными параметрами (некорректное
+       число или их типы).
 
     """
-    Корректная инициализация валидатора требует передачи ему списка методов валидации (причем, методы должны возвращать значение булева
-    типа, а сам список не должен быть пустым). Метод обработки ошибок передавать можно, но не обязательно.
+    methods = {'first': 1, 'second': 2}
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = []
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = ['first', 'second']
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = [method_returns_something]
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = [method_without_params]
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = [method_with_invalid_param]
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = [method_without_raise]
+    with _(TypeError):
+        validator = Validator(methods)                                # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = 'Vasya'
+    with _(TypeError):
+        validator = Validator(methods, handler)                       # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = method_returns_something
+    with _(TypeError):
+        validator = Validator(methods, handler)                       # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = handler_with_only_one_param
+    with _(TypeError):
+        validator = Validator(methods, handler)                       # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = handler_with_invalid_param1
+    with _(TypeError):
+        validator = Validator(methods, handler)                       # noqa
+
+    methods = [method_has_raise, method_has_raise_1]
+    handler = handler_with_invalid_param2
+    with _(TypeError):
+        validator = Validator(methods, handler)                       # noqa
+
+
+def testp_validation() -> None:
     """
+    **Фактическая валидация (через вызов метода)**
 
-    methods = [method_is_positive]
-    validator = Validator(methods)
+    Проводим реальные тесты валидации:
+    1. Валидатор корректно дает исключение, при его вызове без параметров,
+       когда валидатору нужны параметры.
+    2. Валидатор корректно возвращает ошибку, при его правильном вызове с
+       нужными параметрами, при условии, что объект проверки не соответствует
+       этим параметрами
+    3. Валидатор ничего не делает, если его корректно вызвали с параметрами, и
+       объект соответствует параметрам
 
-def testn_validator_initialization():
+    :return: ``None``
     """
-    """
+    s = 'Очень длинная строка, которая, явно длиннее 20 символов, в натуре!'
 
-    # Валидация невозможна если не переданы конкретные методы валидации.
-    # Вариант 1. Аргумент methods не является списком
+    methods = [real_Length_validation]
+    validator = Validator(methods)                                    # noqa
+    with _(TypeError):
+        validator.validate(s)
 
-    methods = 42
-    with _(Exception):
-        validator = Validator(methods)  # noqa - намеренная ошибка ради теста
+    s = 'Очень длинная строка, которая, явно длиннее 20 символов, в натуре!'
+    methods = [real_Length_validation]
+    validator = Validator(methods)                                    # noqa
+    with _(ValueError):
+        validator.validate(s, max_length=20)                          # noqa
+
+    s = 'Коротенькая строка, явно меньше 100 символов'
+    methods = [real_Length_validation]
+    validator = Validator(methods)                                    # noqa
+    validator.validate(s, max_length=100)                             # noqa
+
+
+def testn_validation() -> None:                                       # noqa
+    ...
 
 
 """
-Корректная инициализация с валидными методами.
-Вызов исключения при передаче неверного типа methods.
-Вызов исключения при передаче пустого списка методов.
-Вызов исключения при передаче не вызываемого объекта в качестве метода.
-Вызов исключения при методе, возвращающем не булево значение.
-Вызов исключения при методе, ничего не возвращающем.
-Корректная инициализация с валидным обработчиком.
-Вызов исключения при передаче невалидного обработчика.
-Корректная инициализация с методом, возвращающим Optional[bool].
 
+2. Тесты метода валидации (validate)
 
-def test_validator_init_with_valid_methods():
-    # Тест для успешной инициализации с валидными методами
-    methods = [is_positive]
-    validator = Validator(methods)
-    assert validator._methods == methods
-    assert validator._handler is None
+Успешная валидация: Проверить, что метод validate не выбрасывает исключений при успешной проверке объекта.
+Неуспешная валидация: Проверить, что метод validate выбрасывает соответствующее исключение ValidationError при неудачной проверке объекта.
+Обработка ошибок: Проверить, что метод validate вызывает обработчик ошибок handler при неудачной проверке объекта, если он задан.
+Вывод информации об ошибке: Проверить, что при отсутствии обработчика ошибок, метод validate выводит информацию об ошибке в консоль.
 
-def test_validator_init_with_invalid_methods_type():
-    # Тест для проверки TypeError при передаче не списка в методы
-    with pytest.raises(TypeError):
-        Validator(methods=is_positive)
+3. Тесты декоратора (validate_with)
 
-def test_validator_init_with_empty_methods_list():
-    # Тест для проверки TypeError при передаче пустого списка методов
-    with pytest.raises(TypeError):
-        Validator(methods=[])
+Корректное применение декоратора: Проверить, что декоратор validate_with корректно выполняет валидацию объекта перед вызовом декорируемой функции.
+Передача параметров в декоратор: Проверить, что декоратор validate_with корректно принимает и использует параметры, переданные при его вызове.
 
-def test_validator_init_with_non_callable_method():
-    # Тест для проверки TypeError при передаче не вызываемого объекта в списке методов
-    with pytest.raises(TypeError):
-        Validator(methods=[lambda x: x > 0, 5])
+5. Тесты на граничные случаи
 
-def test_validator_init_with_invalid_return_type():
-    # Тест для проверки TypeError при передаче метода с неверным возвращаемым типом
-    def invalid_return_type(obj):
-        return "not a bool"
+Проверить поведение класса при передаче пустых или None значений в качестве аргументов.
+Проверить поведение класса при возникновении различных типов исключений во время валидации.
+Проверить поведение класса при использовании сложных типов данных в качестве аргументов.
+Важно:
 
-    with pytest.raises(TypeError):
-        Validator(methods=[invalid_return_type])
-
-def test_validator_init_with_no_return_type():
-    # Тест для проверки TypeError при передаче метода без возвращаемого типа
-    def no_return_type(obj):
-        pass
-
-    with pytest.raises(TypeError):
-        Validator(methods=[no_return_type])
-
-def test_validator_init_with_valid_handler():
-    # Тест для успешной инициализации с валидным обработчиком ошибок
-    def handler(ex):
-        print(ex)
-
-    methods = [is_positive]
-    validator = Validator(methods, handler)
-    assert validator._methods == methods
-    assert validator._handler == handler
-
-def test_validator_init_with_invalid_handler():
-    # Тест для проверки TypeError при передаче не вызываемого обработчика ошибок
-    with pytest.raises(TypeError):
-        Validator(methods=[is_positive], handler="not callable")
-        
-        
-def test_init_with_valid_methods(self):
-    # Тест инициализации с корректным списком методов
-
-    def method1(obj): return True
-
-    def method2(obj): return True
-
-    validator = Validator([method1, method2])
-    self.assertEqual(validator._methods, [method1, method2])
-
-
-def test_init_with_empty_methods(self):
-    # Тест инициализации с пустым списком методов
-
-    validator = Validator([])
-    self.assertEqual(validator._methods, [])
-
-
-def test_init_with_invalid_methods_type(self):
-    # Тест инициализации с некорректным типом аргумента methods
-
-    with self.assertRaises(TypeError):
-        Validator("not a list")
-
-
-def test_init_with_non_callable_method(self):
-    # Тест инициализации с некорректным элементом в списке methods
-
-    with self.assertRaises(TypeError):
-        Validator([lambda x: x, "not a function"])
-
-
-def test_init_with_valid_handler(self):
-    # Тест инициализации с корректным обработчиком ошибок
-
-
-    def handler(e): return "Error handled"
-
-    validator = Validator([], handler)
-    self.assertEqual(validator._handler, handler)
-
-
-def test_init_with_none_handler(self):
-    # Тест инициализации с обработчиком ошибок равным None
-
-    validator = Validator([])
-    self.assertIsNone(validator._handler)
-
-
-def test_init_with_invalid_handler_type(self):
-    # Тест инициализации с некорректным типом обработчика ошибок
-
-    with self.assertRaises(TypeError):
-        Validator([], "not a function")
-
-
-def type_is_valid(obj: Any):
-    actual_t = type(obj)
-    if actual_t is not str:
-        raise ValidationError(f'Полученный объект не является '
-                              f'{str} (реальный тип объекта: '
-                              f'{actual_t})', 0)
+Все тесты должны быть хорошо документированы и покрывать все возможные сценарии использования класса.
+Тесты должны быть написаны с использованием фреймворка для тестирования Python, такого как pytest или unittest.
+Тесты должны быть запущены на разных платформах и версиях Python, чтобы убедиться в корректной работе класса во всех средах.
 
 
 def length_is_valid(obj: Any, params: VParams):
