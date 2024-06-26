@@ -97,9 +97,13 @@ class Validator:
                 if self._handler is None:
                     en = _en(type(er))
                     msg = er.args[0]
-                    print(self.E_INFO.format(en, msg))
+                    # print(INFO.format(en, msg))
+                    raise ValidationError(INFO.format(en, msg))
                 else:
                     self._handler(er, obj)
+
+            except Exception as er:
+                raise Exception(UNKNOWN_ERR)
 
     def validate_with(self: T, **params: VParams) -> Callable:
         """
