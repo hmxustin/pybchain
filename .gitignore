@@ -4,4 +4,9 @@
 # PyCharm
 .idea/
 
+# Tests
 .coverage
+tests/test_output.txt
+
+# Linter
+.flake8
