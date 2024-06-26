@@ -2,10 +2,12 @@
 **Абстрактный валидатор (валидация входных значений)**
 
 Валидатор, обеспечивающий проверку значений перед их установкой (может быть
-использован через декоратор с параметрами)
+использован через декоратор с параметрами). Модуль разработан согласно
+требованиям https://clck.ru/3BUKJk
 """
 
-from inspect import signature, Signature
+from ast import Raise, parse, walk
+from inspect import Signature, getsource, signature
 from re import search
 from typing import TypeVar
 
@@ -41,6 +43,7 @@ class Validator:
         :return: ``None``
         """
         self._methods = []
+        self._handler = None
 
         if not isinstance(methods, list):
             tpe = type(methods)
@@ -54,36 +57,10 @@ class Validator:
 
         if handler is not None and not callable(handler):
             tpe = type(handler)
-            raise TypeError(self.E_NON_CALLABLE_H.format(tpe))
+            raise TypeError(NON_CALLABLE_H.format(tpe))
 
         if handler:
-            sign = signature(handler)
-            params = list(sign.parameters.values())
-
-            if len(params) < 2:
-                raise TypeError(self.E_NOT_ENOUGH_PARAMS)
-
-            # Проверяем первый аргумент (исключая self, если это метод класса)
-            first_param = params[0] if params[0].name != 'self' else params[1]
-            if first_param.annotation != Exception:
-                return
-
-            # Проверяем второй аргумент
-            second_param = params[1] if params[0].name != 'self' else params[2]
-            if second_param.annotation != Any:
-                return False
-
-        self._handler = handler
-
-    def _set_method(self: T, method: VMethod):
-        if not callable(method):
-            tpe = type(method)
-            raise TypeError(NON_CALLABLE_M.format(tpe))
-
-        sign = signature(method)
-        ra = sign.return_annotation
-        if ra is not Signature.empty:
-            raise TypeError(self.E_RET_NOT_NONE)
+            self._set_handler(handler)
 
     def validate(self: T, obj: VObj, **params: VParams) -> None:
         """
@@ -139,3 +116,68 @@ class Validator:
                 return func(obj, *args, **kwargs)
             return wrapper
         return decorator
+
+    def _set_method(self: T, method: VMethod) -> None:
+        """
+        **Установка значений конкретных методов валидации**
+
+        Проверяем каждый полученный конкретный метод валидации и добавляем в
+        список. Проверки осуществляются на предмет:
+         - является ли вызываемым (должен);
+         - не имеет ли возвращаемого значения (не должен);
+         - содержит ли внутри вызов исключения (должен).
+
+        :param method: отдельный конкретный метод валидации для проверки
+        :return: ``None``
+        """
+        if not callable(method):
+            tpe = type(method)
+            raise TypeError(NON_CALLABLE_M.format(tpe))
+
+        sign = signature(method)
+        ra = sign.return_annotation
+        if ra is not Signature.empty:
+            raise TypeError(self.E_RET_NOT_NONE)
+
+        method_source = getsource(method)
+        sem_tree = parse(method_source)
+        contains_exception = False
+
+        for node in walk(sem_tree):
+            if isinstance(node, Raise):
+                contains_exception = True
+                break
+
+        if not contains_exception:
+            raise TypeError(NOT_RAISES)
+
+        self._methods.append(method)
+
+    def _set_handler(self: T, handler: EHandler) -> None:
+        """
+        **Установка метода обработки исключений**
+
+        Проверяем полученный метод (здесь мы уже точно знаем, что он получен),
+        и устанавливаем его. Проверки осуществляются на предмет:
+         - имеется ли два параметра (или более);
+         - является ли первый параметр исключением;
+         - является ли второй параметр Any.
+
+        :param handler: метод обработки исключительных ситуаций
+        :return:
+        """
+        sign = signature(handler)
+        params = list(sign.parameters.values())
+
+        if len(params) < 2:
+            raise TypeError(NOT_ENOUGH_PARAMS)
+
+        first_param = params[0] if params[0].name != 'self' else params[1]
+        if first_param.annotation != Exception:
+            raise TypeError(PARAM_IS_NOT_EXCEPTION)
+
+        second_param = params[1] if params[0].name != 'self' else params[2]
+        if second_param.annotation != Any:
+            raise TypeError()
+
+        self._handler = handler
