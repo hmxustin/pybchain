@@ -124,8 +124,12 @@ class Validator:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Any:            # noqa
                 if args:
-                    if isinstance(args[0], object):
-                        # Если первый аргумент - экземпляр класса
+                    if len(args) == 1:
+                        # Пришел единственный аргумент: предполагаем, что это
+                        # и есть объект проверки
+                        obj = args[0]
+                    elif isinstance(args[0], object):
+                        # Если первый аргумент - экземпляр какого-то класса
                         # значит это метод класса, тогда берем следующий
                         # аргумент (поскольку первый - это self)
                         obj = args[1]
