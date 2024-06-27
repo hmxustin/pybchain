@@ -7,6 +7,7 @@
 """
 
 from ast import Raise, parse, walk
+from functools import wraps
 from inspect import Signature, getsource, signature
 from re import search
 from typing import TypeVar
@@ -62,7 +63,7 @@ class Validator:
         if handler:
             self._set_handler(handler)
 
-    def validate(self: T, obj: VObj, **params: VParams) -> None:
+    def validate(self: T, obj: VObj, **params: VParams) -> VObj:
         """
         **Метод валидации**
 
@@ -72,9 +73,12 @@ class Validator:
         Собственно, валидация
         :param obj: объект валидации
         :param params: параметры валидации
-        :return: ``None``
+        :return: объект валидации (в неизменном виде)
         """
-        def _en(error_class: type[ValidationError]) -> str | None:
+        if params is None:
+            params = {}
+
+        def er_name(error_class: type[ValidationError]) -> str | None:
             """
             **Метод получения имени ошибки**
 
@@ -95,15 +99,17 @@ class Validator:
 
             except ValidationError as er:
                 if self._handler is None:
-                    en = _en(type(er))
+                    en = er_name(type(er))
                     msg = er.args[0]
                     # print(INFO.format(en, msg))
                     raise ValidationError(INFO.format(en, msg))
                 else:
                     self._handler(er, obj)
 
-            except Exception as er:
+            except Exception:
                 raise Exception(UNKNOWN_ERR)
+
+        return obj
 
     def validate_with(self: T, **params: VParams) -> Callable:
         """
@@ -115,10 +121,29 @@ class Validator:
         :return: конкретная функция валидации
         """
         def decorator(func: Callable) -> Callable:
-            def wrapper(obj: VObj, *args: Args,
-                        **kwargs: VParams) -> Callable:
-                self.validate(obj, **params)
-                return func(obj, *args, **kwargs)
+            @wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:            # noqa
+                if args:
+                    if isinstance(args[0], object):
+                        # Если первый аргумент - экземпляр класса
+                        # значит это метод класса, тогда берем следующий
+                        # аргумент (поскольку первый - это self)
+                        obj = args[1]
+                    else:
+                        # Иначе это обычная функция, и тогда берем первый
+                        # аргумент - он и будет объектом проверки
+                        obj = args[0]
+                else:
+                    # Если нет позиционных аргументов, предполагаем, что obj
+                    # передан в kwargs
+                    obj = kwargs.pop('obj', None)
+
+                if obj:
+                    self.validate(obj, **params)
+                else:
+                    raise ValueError(NO_OBJ)
+
+                return func(*args, **kwargs)
             return wrapper
         return decorator
 
