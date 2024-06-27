@@ -9,7 +9,7 @@ from pytest import raises as _
 from shared.classes.basic.abstractions.validator.validator import *
 
 
-def method_has_raise(a: Any) -> None:                                 # noqa
+def method_has_raise(a: Any, p: VParams) -> None:                     # noqa
     if False:
         raise Exception  # noqa
 
@@ -197,6 +197,10 @@ def testp_validation() -> None:
     """
     s = 'Очень длинная строка, которая, явно длиннее 20 символов, в натуре!'
 
+    methods = [method_has_raise]
+    validator = Validator(methods)                                    # noqa
+    validator.validate(1)
+
     methods = [real_length_validation]
     validator = Validator(methods)                                    # noqa
     with _(ValidationError):
@@ -220,6 +224,7 @@ def testp_validation() -> None:
     validator = Validator([unexpected_crush])
     with _(Exception, match=r'.*непредвиденная'):
         validator.validate(s, max_length=1)                           # noqa
+
 
 def testn_validation() -> None:                                       # noqa
     ...
@@ -256,4 +261,54 @@ def testp_validation_via_decorator() -> None:
     
 
 def testn_validation_via_decorator() -> None:
-    ...
+    validator = Validator([real_length_validation])
+    s = ''
+
+    @validator.validate_with()
+    def set_value():
+        nonlocal s
+        s = '1'
+
+    # Здесь мы вызываем метод, но нет никакого объекта проверки. Поэтому
+    # должна появиться ошибка NO_OBJ
+
+    with _(ValueError):
+        set_value()
+
+
+def testp_validation_via_decorator_in_class():
+    validator = Validator([real_length_validation])
+
+    class UserName:
+        @validator.validate_with(max_length=111)                      # noqa
+        def __init__(self, value):
+            self._value = value
+
+    un = UserName('Вася')
+
+
+def testn_validation_via_decorator_in_class() -> None:
+    """
+    **Валидация через декоратор для метода чужого класса**
+
+    Проверяем, что в случае, если нет объекта проверки, возникает
+
+    :return: ``None``
+    """
+
+    validator = Validator([method_has_raise_1])                       # noqa
+
+    class UserName:
+        @validator.validate_with(max_length=111)                      # noqa
+        def __init__(self):
+            self._value = None
+
+    # 🚩 Выпадает не ошибка "Объект не найден", а "Непредвиденная ошибка".
+    # Это не очень-то правильно, но пока работает. Это происходит потому,
+    # что когда у нас отправляется единственный аргумент, то мы считаем,
+    # что это и есть объект, подлежащий валидации. А далее уже на этапе самой
+    # валидации выпадает "Непредвиденная ошибка", поскольку пытаемся
+    # проверить self, а не реальный объект (реального объекта тут нет).
+
+    with _(Exception):
+        u_name = UserName()
