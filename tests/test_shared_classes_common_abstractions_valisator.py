@@ -24,7 +24,7 @@ def correct_handler(e: Exception, obj: Any) -> None:                  # noqa
 
 
 def method_returns_something() -> str:                                # noqa
-    return '42'
+    return '41'
 
 
 def method_without_params() -> None:                                  # noqa
